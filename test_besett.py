@@ -261,7 +261,7 @@ class BasicManagerTests(ut.TestCase):
         """ Manager sets to the runtime "file".
         """
         self.manager.set('testkey', 'testval')
-        runtime = self.manager._file_groups['runtime']
+        runtime = self.manager.runtime
         self.assertEqual(runtime._settings['testkey'], 'testval')
         self.assertEqual(runtime.get('testkey'), 'testval')
         self.assertEqual(self.manager.get('testkey'), 'testval')
@@ -270,7 +270,7 @@ class BasicManagerTests(ut.TestCase):
     def test___setitem__(self):
         """ Manager sets to the runtime "file".
         """
-        runtime = self.manager._file_groups['runtime']
+        runtime = self.manager.runtime
 
         self.manager['testkey'] = 'testval'
         self.assertEqual(runtime._settings['testkey'], 'testval')
@@ -296,6 +296,9 @@ class ChartManagerTests(ut.TestCase):
             self.manager.get('colors'),
             ['red', 'green', 'blue'])
 
+        self.assertEqual(self.manager.get_user('dimensions.height'), 1080)
+        self.assertIsNone(self.manager.get_user('colors'))
+
     def test_default_settings(self):
         """ Chart example: Correct 'default' settings.
         """
@@ -308,4 +311,9 @@ class ChartManagerTests(ut.TestCase):
             480)
         self.assertListEqual(
             self.manager.get('colors'),
+            ['red', 'green', 'blue'])
+
+        self.assertEqual(self.manager.get_default('dimensions.height'), 480)
+        self.assertListEqual(
+            self.manager.get_default('colors'),
             ['red', 'green', 'blue'])

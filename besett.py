@@ -353,6 +353,12 @@ class Manager(object):
         if auto:
             self.reload()
 
+    @property
+    def runtime(self):
+        """ Returns the runtime settings 'file'.
+        """
+        return self._file_groups['runtime']
+
     def add_source(self, fpath, groupkey='user'):
         """ Adds a new settings file.
 
@@ -416,6 +422,7 @@ class Manager(object):
             key = Key identifying setting.  Options:
                     string = For nested settings, supply a dot-separated string,
                              e.g. 'myplugin.ui.colour'.
+            default = Default value to return if key not found.
             groupkey = [Optional] Filter by settings group.  One of:
                         - 'default'
                         - 'plugin'
@@ -429,6 +436,40 @@ class Manager(object):
             return self._getex(key, groupkey=groupkey)
         except KeyError:
             return default
+
+    def get_default(self, key=None, default=None):
+        """ Gets setting with the given key, searching across 'default' files.
+
+        If the setting is a dictionary, the entries get merged across all
+        settings files.
+
+        Args:
+            key = Key identifying setting.  Options:
+                    string = For nested settings, supply a dot-separated string,
+                             e.g. 'myplugin.ui.colour'.
+            default = Default value to return if key not found.
+
+        Returns:
+            The setting at the given key if valid, otherwise the default value.
+        """
+        return self.get(key, default, groupkey='default')
+
+    def get_user(self, key=None, default=None):
+        """ Gets setting with the given key, searching across 'user' files.
+
+        If the setting is a dictionary, the entries get merged across all
+        settings files.
+
+        Args:
+            key = Key identifying setting.  Options:
+                    string = For nested settings, supply a dot-separated string,
+                             e.g. 'myplugin.ui.colour'.
+            default = Default value to return if key not found.
+
+        Returns:
+            The setting at the given key if valid, otherwise the default value.
+        """
+        return self.get(key, default, groupkey='user')
 
     def set(self, key, value):
         """ Sets 'runtime' setting with the given key.
