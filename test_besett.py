@@ -39,12 +39,44 @@ class NestedDictTests(ut.TestCase):
         self.ndict['sub.dict'] = 'override'
         self.assertEqual(self.ndict['sub.dict'], 'override')
 
+    def test___getitem__(self):
+        """ NestedDict __getitem__ works correctly.
+        """
+        self.assertEqual(self.ndict['flat'], 'testflat')
+        self.assertEqual(self.ndict['multi.level'], 'testmultilevel')
+        self.assertEqual(self.ndict['sub.dict.item'], 'testsubdictitem')
+        with self.assertRaises(KeyError):
+            self.ndict['nokey']
+
     def test_get(self):
         """ NestedDict get works correctly.
         """
         self.assertEqual(self.ndict.get('flat'), 'testflat')
         self.assertEqual(self.ndict.get('multi.level'), 'testmultilevel')
         self.assertEqual(self.ndict.get('sub.dict.item'), 'testsubdictitem')
+
+    def test_get_nokeyerror(self):
+        """ NestedDict get does not raise KeyError.
+        """
+        value = self.ndict.get('nokey')
+
+        try:
+            value = self.ndict.get('nokey')
+            self.assertIsNone(value)
+        except KeyError:
+            self.fail('Raised KeyError when it should not.')
+
+        try:
+            value = self.ndict.get('multi.nokey')
+            self.assertIsNone(value)
+        except KeyError:
+            self.fail('Raised KeyError when it should not.')
+
+        try:
+            value = self.ndict.get('multi.multi.nokey')
+            self.assertIsNone(value)
+        except KeyError:
+            self.fail('Raised KeyError when it should not.')
 
     def test_items(self):
         """ NestedDict items works correctly.
@@ -151,7 +183,7 @@ class FileTests(ut.TestCase):
         self.assertEqual(setting, 12.3)
 
 
-class ManagerTests(ut.TestCase):
+class BasicManagerTests(ut.TestCase):
 
     def setUp(self):
         self.manager = besett.Manager()
@@ -171,7 +203,6 @@ class ManagerTests(ut.TestCase):
     def test_multilevel(self):
         """ Manager returns correct multi-level items.
         """
-        print('testing')
         self.assertEqual(self.manager.get('multi.level.default'), 0.0)
         self.assertEqual(self.manager.get('multi.level.user'), 1.0)
 
@@ -191,11 +222,11 @@ class ManagerTests(ut.TestCase):
     def test_multiitem_bygroup(self):
         """ Manager returns correct multi-item dictionary, by group.
         """
-        got = self.manager.get('multi.level', 'default')
+        got = self.manager.get('multi.level', groupkey='default')
         expected = {'default': 0.0}
         self.assertDictEqual(got, expected)
 
-        got = self.manager.get('multi.level', 'user')
+        got = self.manager.get('multi.level', groupkey='user')
         expected = {'user': 1.0}
         self.assertDictEqual(got, expected)
 
@@ -215,6 +246,17 @@ class ManagerTests(ut.TestCase):
         }
         self.assertDictEqual(got, expected)
 
+    def test___getitem__(self):
+        """ Manager __getitem__ works, flat and nested settings.
+        """
+        self.assertEqual(self.manager['multi.level.default'], 0.0)
+        self.assertEqual(self.manager['multi.level.user'], 1.0)
+        self.assertEqual(
+            self.manager['multi.level'],
+            {'default': 0.0, 'user': 1.0})
+        self.assertEqual(self.manager['user'], 'thingy')
+        self.assertEqual(self.manager['default'], 'user-thing')
+
     def test_runtime_set(self):
         """ Manager sets to the runtime "file".
         """
@@ -224,3 +266,46 @@ class ManagerTests(ut.TestCase):
         self.assertEqual(runtime.get('testkey'), 'testval')
         self.assertEqual(self.manager.get('testkey'), 'testval')
         self.assertEqual(self.manager.get('testkey', 'runtime'), 'testval')
+
+    def test___setitem__(self):
+        """ Manager sets to the runtime "file".
+        """
+        runtime = self.manager._file_groups['runtime']
+
+        self.manager['testkey'] = 'testval'
+        self.assertEqual(runtime._settings['testkey'], 'testval')
+
+        self.manager['l0.l1.testkey'] = 'testval'
+        self.assertEqual(runtime['l0.l1.testkey'], 'testval')
+        self.assertEqual(runtime['l0.l1'], {'testkey': 'testval'})
+
+class ChartManagerTests(ut.TestCase):
+
+    def setUp(self):
+        self.manager = besett.Manager()
+        self.manager.add_source('test_data/chart-default.json', 'default')
+        self.manager.add_source('test_data/chart-user.json', 'user')
+
+    def test_user_settings(self):
+        """ Chart example: Correct 'user settings.
+        """
+        self.assertEqual(self.manager.get('dpi'), 300)
+        self.assertEqual(self.manager.get('dimensions.width'), 1920)
+        self.assertEqual(self.manager.get('dimensions.height'), 1080)
+        self.assertListEqual(
+            self.manager.get('colors'),
+            ['red', 'green', 'blue'])
+
+    def test_default_settings(self):
+        """ Chart example: Correct 'default' settings.
+        """
+        self.assertEqual(self.manager.get('dpi', groupkey='default'), 150)
+        self.assertEqual(
+            self.manager.get('dimensions.width', groupkey='default'),
+            640)
+        self.assertEqual(
+            self.manager.get('dimensions.height', groupkey='default'),
+            480)
+        self.assertListEqual(
+            self.manager.get('colors'),
+            ['red', 'green', 'blue'])

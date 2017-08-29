@@ -1,0 +1,2 @@
+# Optionally extend lists across settings file, not override.
+# Separate 'get' functions for each settings group in the Manager class.

@@ -1,0 +1,12 @@
+{
+    "dpi": 150,
+    "dimensions": {
+        "width": 640,
+        "height": 480
+    },
+    "colors": [
+        "red",
+        "green",
+        "blue"
+    ]
+}

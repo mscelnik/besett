@@ -44,8 +44,7 @@ class NestedDict(dict):
     def __getitem__(self, key):
         levels = key.split(NestedDict.SEP, 1)
         if levels[0] not in self:
-            # Don't raise a KeyError if not found, just return None.
-            return None
+            raise KeyError('Top level key not in nested dict.')
         else:
             val = super().__getitem__(levels[0])
             if len(levels) > 1:
@@ -72,12 +71,20 @@ class NestedDict(dict):
             # This is the bottom of the nest structure.  Set the item.
             super().__setitem__(key, val)
 
-    def get(self, key, **kwargs):
+    def get(self, key, default=None, **kwargs):
+        """ Overrides dict get() to work with nested keys.
+        """
         levels = key.split(NestedDict.SEP, 1)
         if len(levels) > 1:
-            return super().__getitem__(levels[0]).get(levels[1], **kwargs)
+            # The key has lower nest levels, so call get() on the next
+            # level down.
+            try:
+                return super().__getitem__(levels[0]).get(levels[1], **kwargs)
+            except KeyError:
+                return default
         else:
-            return super().get(levels[0], **kwargs)
+            # This is the bottom nest level (or flat).
+            return super().get(levels[0], default, **kwargs)
 
     def pop(self, key, **kwargs):
         levels = key.split(NestedDict.SEP, 1)
@@ -128,13 +135,23 @@ class File(object):
         if autoload and (fpath is not None):
             self.read(fpath)
 
+    def __getitem__(self, key):
+        import copy
+        if key is None:
+            return copy.deepcopy(self._settings)
+        else:
+            return self._settings[key]
+
+    def __setitem__(self, key, value):
+        self._settings[key] = value
+
     @property
     def path(self):
         """ Path to the disk file containing the settings definitions.
         """
         return self._path
 
-    def get(self, key=None):
+    def get(self, key=None, default=None):
         """ Gets setting with the given key.
 
         Args:
@@ -146,12 +163,10 @@ class File(object):
         Returns:
             The setting at the given key if valid, otherwise None.
         """
-        import copy
-
-        if key is None:
-            return copy.deepcopy(self._settings)
-        else:
-            return self._settings[key]
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
     def set(self, key, value):
         """ Sets setting with the given key.
@@ -161,12 +176,8 @@ class File(object):
                     string = For nested settings, supply a dot-separated string,
                              e.g. 'myplugin.ui.colour'.
             value = Settings value.  Any valid Python object.
-
-        Returns:
-            True if successful, otherwise False.
         """
-        self._settings[key] = value
-        return True
+        self[key] = value
 
     def reset(self):
         """ Reset the file to no settings and no active path.
@@ -232,6 +243,97 @@ class Manager(object):
             user=[],
             runtime=File(),
         )
+
+    def _getex(self, key, groupkey=None):
+        """ Gets setting with the given key, searching across files.
+
+        If the setting is a dictionary, the entries get merged across all
+        settings files.
+
+        This method does not return a default value (use get() for that). It
+        will raise a KeyError if the key is invalid.  The get and __getitem__
+        methods use this method internally; normally you should not call it
+        directly.
+
+        Args:
+            key = Key identifying setting.  Options:
+                    string = For nested settings, supply a dot-separated string,
+                             e.g. 'myplugin.ui.colour'.
+            groupkey = [Optional] Filter by settings group.  One of:
+                        - 'default'
+                        - 'plugin'
+                        - 'user'
+                        - 'runtime'
+                       If None then method does not filter by group.
+        Returns:
+            The setting at the given key if valid, otherwise raises KeyError.
+        """
+
+        # Filter files by group if requested.
+        if groupkey is not None:
+            if groupkey in self._file_groups:
+                files = self.iter_files(groupkey)
+            else:
+                raise KeyError('Group key is invalid.')
+        else:
+            files = self.iter_files()
+
+
+        # If the user supplies no key, return all settings.
+        if key is None:
+            settings = NestedDict()
+            for f in files:
+                settings.update(f.get())
+            return settings
+        else:
+            # Work through the settings files to get the highest priority
+            # setting which matches the requested key.
+            try:
+                setting = next(files)[key]
+                found = True
+            except KeyError:
+                setting = None
+                found = False
+
+            for f in files:
+                try:
+                    file_setting = f[key]
+                    found = True
+                except KeyError:
+                    continue
+
+                # If the setting is a dictionary, merge the dictionaries
+                # together. Otherwise just store the setting from the higher
+                # priority source.
+                if isinstance(setting, dict):
+                    setting.update(file_setting)
+                else:
+                    setting = file_setting
+
+            if found:
+                return setting
+            else:
+                raise KeyError('Key not found in any settings file.')
+
+    def __getitem__(self, key):
+        return self._getex(key)
+
+    def __setitem__(self, key, value):
+        """ Sets 'runtime' setting with the given key.
+
+        Runtime settings are the highest priority.  They are set in the program,
+        not read from file.  You can only set runtime settings with this method;
+        file group settings (default, user, plugin) must all come directly from
+        the relevant settings files.
+
+        Args:
+            key = Key identifying setting.  Options:
+                    string = For nested settings, supply a dot-separated string,
+                             e.g. 'myplugin.ui.colour'.
+                    list = For nesting settings, list of strings (without dots).
+            value = Settings value.  Any valid Python object
+        """
+        return self._file_groups['runtime'].set(key, value)
 
     @property
     def autoload(self):
@@ -304,7 +406,7 @@ class Manager(object):
         for f in self.iter_files():
             f.reload()
 
-    def get(self, key=None, groupkey=None):
+    def get(self, key=None, default=None, groupkey=None):
         """ Gets setting with the given key, searching across files.
 
         If the setting is a dictionary, the entries get merged across all
@@ -321,39 +423,12 @@ class Manager(object):
                         - 'runtime'
                        If None then method does not filter by group.
         Returns:
-            The setting at the given key if valid, otherwise None.
+            The setting at the given key if valid, otherwise the default value.
         """
-
-        # Filter files by group if requested.
-        if groupkey is not None and groupkey in self._file_groups:
-            files = self.iter_files(groupkey)
-        else:
-            files = self.iter_files()
-
-        # If the user supplies no key, return all settings.
-        if key is None:
-            settings = NestedDict()
-            for f in files:
-                settings.update(f.get())
-            return settings
-        else:
-            # Work through the settings files to get the highest priority
-            # setting which matches the requested key.
-            setting = next(files).get(key)
-            for f in files:
-                file_setting = f.get(key)
-                if file_setting is None:
-                    continue
-
-                # If the setting is a dictionary, merge the dictionaries
-                # together. Otherwise just store the setting from the higher
-                # priority source.
-                if isinstance(setting, NestedDict):
-                    setting.update(file_setting)
-                else:
-                    setting = file_setting
-
-            return setting
+        try:
+            return self._getex(key, groupkey=groupkey)
+        except KeyError:
+            return default
 
     def set(self, key, value):
         """ Sets 'runtime' setting with the given key.
@@ -369,8 +444,5 @@ class Manager(object):
                              e.g. 'myplugin.ui.colour'.
                     list = For nesting settings, list of strings (without dots).
             value = Settings value.  Any valid Python object
-
-        Returns:
-            True if successful, otherwise False.
         """
-        return self._file_groups['runtime'].set(key, value)
+        self[key] = value
