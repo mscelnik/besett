@@ -1,4 +1,9 @@
 {
     "default": "default-thing",
-    "multi.level.default": 0.0
+    "multi.level.default": 0.0,
+    "merge": {
+        "dict": {
+            "defaultkey": "defaultval"
+        }
+    }
 }

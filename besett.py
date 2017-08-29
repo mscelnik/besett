@@ -58,8 +58,8 @@ class NestedDict(dict):
             if levels[0] not in self:
                 # When setting a multi-level item, ensure the nested dicts
                 # exist at each level.
-                super().__setitem__(levels[0], NestedDict())
-            if not isinstance(self[levels[0]], NestedDict):
+                super().__setitem__(levels[0], type(self)())
+            if not isinstance(self[levels[0]], dict):
                 # The key exists already but it is not a nested dictionary.
                 # We cannot override a value at a mid point in the nest, so
                 # raise a KeyError.
@@ -136,11 +136,7 @@ class File(object):
             self.read(fpath)
 
     def __getitem__(self, key):
-        import copy
-        if key is None:
-            return copy.deepcopy(self._settings)
-        else:
-            return self._settings[key]
+        return self._settings[key]
 
     def __setitem__(self, key, value):
         self._settings[key] = value
@@ -151,12 +147,17 @@ class File(object):
         """
         return self._path
 
-    def get(self, key=None, default=None):
+    def all(self):
+        """ Returns a copy of all settings in the file.
+        """
+        import copy
+        return copy.deepcopy(self._settings)
+
+    def get(self, key, default=None):
         """ Gets setting with the given key.
 
         Args:
             key = Key identifying setting.  Options:
-                    None = Return dictionary of all settings.
                     string = For nested settings, supply a dot-separated string,
                              e.g. 'myplugin.ui.colour'.
 
@@ -268,7 +269,6 @@ class Manager(object):
         Returns:
             The setting at the given key if valid, otherwise raises KeyError.
         """
-
         # Filter files by group if requested.
         if groupkey is not None:
             if groupkey in self._file_groups:
@@ -278,16 +278,16 @@ class Manager(object):
         else:
             files = self.iter_files()
 
-
         # If the user supplies no key, return all settings.
         if key is None:
             settings = NestedDict()
             for f in files:
-                settings.update(f.get())
+                settings.update(f.all())
             return settings
         else:
             # Work through the settings files to get the highest priority
-            # setting which matches the requested key.
+            # setting which matches the requested key.  We work forwards through
+            # the files in case we need to merge sub dicts or lists.
             try:
                 setting = next(files)[key]
                 found = True
@@ -305,7 +305,7 @@ class Manager(object):
                 # If the setting is a dictionary, merge the dictionaries
                 # together. Otherwise just store the setting from the higher
                 # priority source.
-                if isinstance(setting, dict):
+                if isinstance(setting, dict) and isinstance(file_setting, dict):
                     setting.update(file_setting)
                 else:
                     setting = file_setting

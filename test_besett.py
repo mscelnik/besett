@@ -230,6 +230,15 @@ class BasicManagerTests(ut.TestCase):
         expected = {'user': 1.0}
         self.assertDictEqual(got, expected)
 
+        got = self.manager.get('merge.dict', groupkey='user')
+        expected = 'userval'
+        self.assertEqual(got, expected)
+
+        got = self.manager.get('merge.dict', groupkey='default')
+        expected = {'defaultkey': 'defaultval'}
+        self.assertDictEqual(got, expected)
+
+
     def test_getall(self):
         """ Manager returns dictionary of all items when getting None.
         """
@@ -242,7 +251,10 @@ class BasicManagerTests(ut.TestCase):
                 }
             },
             'user': 'thingy',
-            'default': 'user-thing'
+            'default': 'user-thing',
+            'merge': {
+                'dict': 'userval'
+            }
         }
         self.assertDictEqual(got, expected)
 
@@ -256,6 +268,7 @@ class BasicManagerTests(ut.TestCase):
             {'default': 0.0, 'user': 1.0})
         self.assertEqual(self.manager['user'], 'thingy')
         self.assertEqual(self.manager['default'], 'user-thing')
+        self.assertEqual(self.manager['merge.dict'], 'userval')
 
     def test_runtime_set(self):
         """ Manager sets to the runtime "file".
