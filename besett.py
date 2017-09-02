@@ -18,11 +18,24 @@ object and provide it the path(s) to your settings file(s).
 Nested settings
 ----------------
 Nested settings are specified/accessed using dot separators (you can override
-this behaviour).  Besett stores settings nternally using a custom nested
+this mode).  Besett stores settings nternally using a custom nested
 dictionary class, enabling you to select groups of settings.  In the json file
 you can still provide a nested dictionary directly, but the dot-notation enables
 you to specify a "deep" nest entry quickly.
 """
+
+from enum import Enum
+
+
+class CombineMode(Enum):
+    """ Options for how the Manager combines settings across file sources.
+
+    Options:
+        OVERRIDE = Manager returns the setting from the highest priority source.
+        MERGE = Manager merges all source settings (dict=update; list=extend).
+    """
+    OVERRIDE = 1
+    MERGE = 2
 
 
 class NestedDict(dict):
@@ -72,7 +85,7 @@ class NestedDict(dict):
             super().__setitem__(key, val)
 
     def get(self, key, default=None, **kwargs):
-        """ Overrides dict get() to work with nested keys.
+        """ OVERRIDEs dict get() to work with nested keys.
         """
         levels = key.split(NestedDict.SEP, 1)
         if len(levels) > 1:
@@ -244,12 +257,22 @@ class Manager(object):
             user=[],
             runtime=File(),
         )
+        self._mode = dict()
+        self._default_dict_mode = CombineMode.MERGE
+        self._default_list_mode = CombineMode.OVERRIDE
+        self._default_mode = CombineMode.OVERRIDE
 
     def _getex(self, key, groupkey=None):
         """ Gets setting with the given key, searching across files.
 
-        If the setting is a dictionary, the entries get merged across all
-        settings files.
+        This method treats dictionaries and lists in the settings as special
+        cases.  If the key mode is set as "MERGE" then the settings get
+        merged across all sources; lists as extended and dictionaries updated.
+        If the key mode is "OVERRIDE" (currently the default) then only
+        the latest, highest priority source is returned.
+
+        If a setting is set to merge, but is not a list of dictionary, then the
+        method returns a list with the settings from each file source.
 
         This method does not return a default value (use get() for that). It
         will raise a KeyError if the key is invalid.  The get and __getitem__
@@ -278,42 +301,60 @@ class Manager(object):
         else:
             files = self.iter_files()
 
-        # If the user supplies no key, return all settings.
         if key is None:
-            settings = NestedDict()
-            for f in files:
-                settings.update(f.all())
-            return settings
+            # Get all settings.
+            all_settings = [f.all() for f in files]
         else:
-            # Work through the settings files to get the highest priority
-            # setting which matches the requested key.  We work forwards through
-            # the files in case we need to merge sub dicts or lists.
-            try:
-                setting = next(files)[key]
-                found = True
-            except KeyError:
-                setting = None
-                found = False
-
+            # Get the requested setting from each file, all in a list.
+            all_settings = list()
             for f in files:
                 try:
-                    file_setting = f[key]
-                    found = True
+                    all_settings.append(f[key])
                 except KeyError:
-                    continue
+                    # File does not contain the setting, skip.
+                    pass
 
-                # If the setting is a dictionary, merge the dictionaries
-                # together. Otherwise just store the setting from the higher
-                # priority source.
-                if isinstance(setting, dict) and isinstance(file_setting, dict):
-                    setting.update(file_setting)
-                else:
-                    setting = file_setting
+        if len(all_settings) == 0:
+            # Key not found anywhere!
+            raise KeyError('Key not found in settings: {}'.format(key))
 
-            if found:
-                return setting
+        # Determine which setting to return based on the combination mode.  The
+        # default combination mode depends on the settings type.
+        all_dicts = all(isinstance(s, dict) for s in all_settings)
+        any_lists = any(isinstance(s, list) for s in all_settings)
+        if all_dicts:
+            mode = self.mode(key, default=self.default_dict_mode)
+        elif any_lists:
+            mode = self.mode(key, default=self.default_list_mode)
+        else:
+            mode = self.mode(key)
+
+        if mode == CombineMode.OVERRIDE:
+            # Simply return the highest priority setting, which is the last
+            # item in the settings list.
+            return all_settings[-1]
+        elif mode == CombineMode.MERGE:
+            # Merge the settings: dict=update, list=append/extend.
+            if all_dicts:
+                to_return = NestedDict()
+                for d in all_settings:
+                    to_return.update(d)
+                return to_return
+            elif any_lists:
+                # If we have lists, merge them all together, appending anything
+                # which is not a list.
+                to_return = list()
+                for s in all_settings:
+                    if isinstance(s, list):
+                        to_return.extend(s)
+                    else:
+                        to_return.append(s)
+                return to_return
             else:
-                raise KeyError('Key not found in any settings file.')
+                # Just return the list of all settings.
+                return all_settings
+        else:
+            raise ValueError('Invalid combination mode: {}'.format(str(mode)))
 
     def __getitem__(self, key):
         return self._getex(key)
@@ -358,6 +399,38 @@ class Manager(object):
         """ Returns the runtime settings 'file'.
         """
         return self._file_groups['runtime']
+
+    @property
+    def default_list_mode(self):
+        return self._default_list_mode
+
+    @default_list_mode.setter
+    def default_list_mode(self, val):
+        self._default_list_mode = val
+
+    @property
+    def default_dict_mode(self):
+        return self._default_dict_mode
+
+    @default_dict_mode.setter
+    def default_dict_mode(self, val):
+        self._default_dict_mode = val
+
+    def mode(self, key, default=None):
+        """ Returns combination mode for given key.
+        """
+        if default is None:
+            default = self._default_mode
+        return self._mode.get(key, default)
+
+    def set_mode(self, key, behave):
+        """ Sets how the manager treats a key.
+
+        Args:
+            key = Settings key.
+            behave = A CombineMode option.
+        """
+        self._mode[key] = CombineMode(behave)
 
     def add_source(self, fpath, groupkey='user'):
         """ Adds a new settings file.

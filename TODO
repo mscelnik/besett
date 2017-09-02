@@ -1,1 +1,2 @@
-# Optionally extend lists across settings file, not override.
+# When loading a file, optionally prefix all settings into a sub-level.
+# When merging dict setting, how to treat file_setting which isn't a dict?

@@ -256,7 +256,7 @@ class BasicManagerTests(ut.TestCase):
                 'dict': 'userval'
             }
         }
-        self.assertDictEqual(got, expected)
+        self.assertDictEqual(expected, got)
 
     def test___getitem__(self):
         """ Manager __getitem__ works, flat and nested settings.
@@ -296,34 +296,40 @@ class ChartManagerTests(ut.TestCase):
 
     def setUp(self):
         self.manager = besett.Manager()
+        self.manager.default_list_mode = besett.CombineMode.MERGE
         self.manager.add_source('test_data/chart-default.json', 'default')
         self.manager.add_source('test_data/chart-user.json', 'user')
 
     def test_user_settings(self):
-        """ Chart example: Correct 'user settings.
+        """ Chart example: Correct 'user' settings.
         """
         self.assertEqual(self.manager.get('dpi'), 300)
         self.assertEqual(self.manager.get('dimensions.width'), 1920)
         self.assertEqual(self.manager.get('dimensions.height'), 1080)
         self.assertListEqual(
             self.manager.get('colors'),
-            ['red', 'green', 'blue'])
+            ['red', 'green', 'blue', 'yellow'])
 
         self.assertEqual(self.manager.get_user('dimensions.height'), 1080)
-        self.assertIsNone(self.manager.get_user('colors'))
+
+        # This captures the issue when you have a single-item list associated
+        # with a MERGE setting.  Besett should return the list, not the item!
+        self.assertEqual(self.manager.get_user('colors'), ['yellow'])
+
+        self.manager.set_mode('colors', besett.CombineMode.OVERRIDE)
+        self.assertEqual(self.manager.get('colors'), ['yellow'])
+
 
     def test_default_settings(self):
         """ Chart example: Correct 'default' settings.
         """
         self.assertEqual(self.manager.get('dpi', groupkey='default'), 150)
         self.assertEqual(
-            self.manager.get('dimensions.width', groupkey='default'),
-            640)
+            self.manager.get('dimensions.width', groupkey='default'), 640)
         self.assertEqual(
-            self.manager.get('dimensions.height', groupkey='default'),
-            480)
+            self.manager.get('dimensions.height', groupkey='default'), 480)
         self.assertListEqual(
-            self.manager.get('colors'),
+            self.manager.get('colors', groupkey='default'),
             ['red', 'green', 'blue'])
 
         self.assertEqual(self.manager.get_default('dimensions.height'), 480)
