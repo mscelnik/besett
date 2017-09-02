@@ -141,6 +141,18 @@ class NestedDictTests(ut.TestCase):
         ]
         self.assertListEqual(got, expected)
 
+    def test_deepen(self):
+        """ NestedDict deepens correctly.
+        """
+        flat = besett.File('test_data/user.json')
+        deep = besett.File('test_data/user.json')
+        deep.deepen('new.toplevel')
+        self.assertDictEqual(flat.all(), deep['new.toplevel'])
+
+        mngr = besett.Manager()
+        mngr.add_source('test_data/user.json', toplevel='new.toplevel')
+        self.assertDictEqual(mngr.get('new'), deep['new'])
+        self.assertDictEqual(mngr.get('new.toplevel'), flat.all())
 
 class FileTests(ut.TestCase):
 

@@ -10,18 +10,19 @@ increasing priority:
   3.  User settings
   4.  Runtime settings
 
-Each level in the hierarchy consists of one or more JSON files.  The Manager
+Each level in the hierarchy consists of one or more JSON files (except runtime,
+which is a special 'file' create when the manager is initialized).  The Manager
 class groups together all the files and provides access to the settings.  For
 typical applications, all you need be instantiate is a single Besett Manager
 object and provide it the path(s) to your settings file(s).
 
 Nested settings
-----------------
+---------------
 Nested settings are specified/accessed using dot separators (you can override
-this mode).  Besett stores settings nternally using a custom nested
-dictionary class, enabling you to select groups of settings.  In the json file
-you can still provide a nested dictionary directly, but the dot-notation enables
-you to specify a "deep" nest entry quickly.
+this).  Besett stores settings nternally using a custom nested dictionary class,
+enabling you to select groups of settings.  In the json file you can still
+provide a nested dictionary directly, but the dot-notation enables you to
+specify a "deep" nest entry quickly.
 """
 
 from enum import Enum
@@ -45,7 +46,7 @@ class NestedDict(dict):
     another object.  A bit like a tree structure.  You can index the nested
     dictionary by specify a delimited key, e.g. ('toplevel.first.second').
 
-    You can change the delimiter by setting the "separator" property.
+    You can change the delimiter by setting the class-level SEP property.
     """
 
     # The nested path separator.  Common to all nested dicts.
@@ -55,6 +56,8 @@ class NestedDict(dict):
         super().__init__(*args, **kw)
 
     def __getitem__(self, key):
+        """ Overrides dict __getitem__ to move down the nested structure.
+        """
         levels = key.split(NestedDict.SEP, 1)
         if levels[0] not in self:
             raise KeyError('Top level key not in nested dict.')
@@ -66,6 +69,8 @@ class NestedDict(dict):
                 return val
 
     def __setitem__(self, key, val):
+        """ Overrides dict __setitem__ to move down the nested structure.
+        """
         levels = key.split(NestedDict.SEP, 1)
         if len(levels) > 1:
             if levels[0] not in self:
@@ -85,7 +90,7 @@ class NestedDict(dict):
             super().__setitem__(key, val)
 
     def get(self, key, default=None, **kwargs):
-        """ OVERRIDEs dict get() to work with nested keys.
+        """ Overrides dict get() to work with nested keys.
         """
         levels = key.split(NestedDict.SEP, 1)
         if len(levels) > 1:
@@ -149,9 +154,13 @@ class File(object):
             self.read(fpath)
 
     def __getitem__(self, key):
+        """ Returns the file setting with the given key; KeyError if error.
+        """
         return self._settings[key]
 
     def __setitem__(self, key, value):
+        """ Sets file setting key with given value.
+        """
         self._settings[key] = value
 
     @property
@@ -161,7 +170,7 @@ class File(object):
         return self._path
 
     def all(self):
-        """ Returns a copy of all settings in the file.
+        """ Returns a deep copy of all settings in the file.
         """
         import copy
         return copy.deepcopy(self._settings)
@@ -173,9 +182,11 @@ class File(object):
             key = Key identifying setting.  Options:
                     string = For nested settings, supply a dot-separated string,
                              e.g. 'myplugin.ui.colour'.
+            default = Default value if setting key not available.  Is None if
+                      not provided.
 
         Returns:
-            The setting at the given key if valid, otherwise None.
+            The setting at the given key if valid, otherwise the default value.
         """
         try:
             return self[key]
@@ -203,7 +214,7 @@ class File(object):
         """ Reloads settings from the current file path.
         """
         self._settings.clear()
-        self.read(self._path)
+        self.read(self.path)
 
     def read(self, fpath):
         """ Reads settings from the given file path.
@@ -243,20 +254,39 @@ class File(object):
         self._settings.update(file_settings)
         return NestedDict(file_settings)
 
+    def deepen(self, toplevel):
+        """ Moves all file settings to under a new top-level key.
+
+        Args:
+            toplevel = New top-level key under which to put all settings.
+        """
+        settings = NestedDict()
+        settings[toplevel] = self._settings
+        self._settings = settings
+
 
 class Manager(object):
-    """ Besett settings manager.
+    """ Besett settings manager - the heart of Besett.
     """
 
     def __init__(self):
         from collections import OrderedDict
         self._autoload = True
+
+        # The file groups dict holds all the settings file objects.  It's in
+        # order of increasing priority.  Each group can consist of multiple
+        # files, though most programs would probably have only one default
+        # settings file and one user settings file.
         self._file_groups = OrderedDict(
             default=[],
             plugin=[],
             user=[],
             runtime=File(),
         )
+
+        # The mode dictionary holds combination modes by key.  These are
+        # optional; Besett assumes default modes based on the setting type (see
+        # below).
         self._mode = dict()
         self._default_dict_mode = CombineMode.MERGE
         self._default_list_mode = CombineMode.OVERRIDE
@@ -418,22 +448,26 @@ class Manager(object):
 
     def mode(self, key, default=None):
         """ Returns combination mode for given key.
+
+        Args:
+            key = Key to search for mode.
+            default = Default mode if key mod not set.
         """
         if default is None:
             default = self._default_mode
         return self._mode.get(key, default)
 
-    def set_mode(self, key, behave):
+    def set_mode(self, key, mode):
         """ Sets how the manager treats a key.
 
         Args:
             key = Settings key.
-            behave = A CombineMode option.
+            mode = A CombineMode option.
         """
-        self._mode[key] = CombineMode(behave)
+        self._mode[key] = CombineMode(mode)
 
-    def add_source(self, fpath, groupkey='user'):
-        """ Adds a new settings file.
+    def add_source(self, fpath, groupkey='user', toplevel=None):
+        """ Adds a new settings file to the manager.
 
         Args:
             fpath = Path to settings file.  Must exist.
@@ -441,6 +475,10 @@ class Manager(object):
                         - 'default'
                         - 'plugin'
                         - 'user' - the default value.
+            toplevel = [Optional] Top-level key to apply to the file.
+
+        Returns:
+            If successful returns the settings file object.
         """
         import os.path
 
@@ -448,9 +486,14 @@ class Manager(object):
         if groupkey.lower() == 'runtime':
             return
 
-        if os.path.exists(fpath) and groupkey in self._file_groups:
+        if os.path.exists(fpath) and groupkey.lower() in self._file_groups:
             f = File(fpath, autoload=self.autoload)
-            self._file_groups[groupkey].append(f)
+            if toplevel is not None:
+                f.deepen(toplevel)
+            self._file_groups[groupkey.lower()].append(f)
+            return f
+        else:
+            raise ValueError('Invalid file source.')
 
     def iter_files(self, groupkey=None, reverse=False):
         """ Iterator: ordered settings file paths, increasing priority.
