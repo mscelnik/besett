@@ -135,6 +135,10 @@ class NestedDict(dict):
 class File(object):
     """ Holds the settings from a single file.
 
+    The Besett File is read-only for disk files; there is currently no way to
+    write settings back to the disk.  You can change/add settings at runtime,
+    but those changes are not preserved when your program terminates.
+
     Technically you can add settings without specifying a file.  Actually the
     Manager class does this for the 'runtime' settings.
     """
@@ -162,6 +166,12 @@ class File(object):
         """ Sets file setting key with given value.
         """
         self._settings[key] = value
+
+    @property
+    def format(self):
+        """ The underlying file format associated with this File object.
+        """
+        return self._format
 
     @property
     def path(self):
@@ -267,6 +277,19 @@ class File(object):
 
 class Manager(object):
     """ Besett settings manager - the heart of Besett.
+
+    The Manager maintains a list of all settings files an provides methods to
+    get/combine settings from all files.  Once loaded, the manager does not use
+    the file names.  Instead, each file is assigned a group; you can get
+    settings from a single group or from all groups, but not from a specific
+    file.  If you want to remember settings from a specific file, consider
+    deepening the settings structure when you call the add_source() method - do
+    this by providing the toplevel argument; al settings in the source file will
+    be placed under that key.
+
+    You can set settings at runtime.  Runtime settings are stored separately
+    from settings from files; you cannot set a file setting at runtime, at least
+    not directly from the manager.
     """
 
     def __init__(self):
@@ -431,6 +454,14 @@ class Manager(object):
         return self._file_groups['runtime']
 
     @property
+    def default_mode(self):
+        return self._default_mode
+
+    @default_mode.setter
+    def default_mode(self, val):
+        self._default_mode = val
+
+    @property
     def default_list_mode(self):
         return self._default_list_mode
 
@@ -475,10 +506,14 @@ class Manager(object):
                         - 'default'
                         - 'plugin'
                         - 'user' - the default value.
-            toplevel = [Optional] Top-level key to apply to the file.
+            toplevel = [Optional] Top-level key to apply to the file.  All
+                       settings in the file will be placed under this key.  This
+                       allows you to segregate settings from a specific file in
+                       Besett, without knowing the file name.
 
         Returns:
-            If successful returns the settings file object.
+            If successful returns the settings file object, otherwise raises an
+            Exception.
         """
         import os.path
 
@@ -496,7 +531,7 @@ class Manager(object):
             raise ValueError('Invalid file source.')
 
     def iter_files(self, groupkey=None, reverse=False):
-        """ Iterator: ordered settings file paths, increasing priority.
+        """ Iterator: ordered settings file paths in increasing priority.
 
         Args:
             groupkey = [Optional] Filter file sources by group.  One of:
@@ -504,6 +539,9 @@ class Manager(object):
                         - 'plugin'
                         - 'user'
                        If None then yields all files from all groups.
+            reversed = [Optional] Which priority order to return files?:
+                            True = In reverse order (highest priority first)
+                            False = Lowest priority first - default.
         """
         groups = self._file_groups.items()
         if reverse:
@@ -600,6 +638,6 @@ class Manager(object):
                     string = For nested settings, supply a dot-separated string,
                              e.g. 'myplugin.ui.colour'.
                     list = For nesting settings, list of strings (without dots).
-            value = Settings value.  Any valid Python object
+            value = Settings value.  Any valid Python object.
         """
         self[key] = value
