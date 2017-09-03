@@ -1,0 +1,42 @@
+{% set data = load_setup_py_data() %}
+
+package:
+  name: besett
+  version: {{ data.get('version') }}
+
+source:
+  # git_rev: release-{}
+  # git_url: https://github.com/mscelnik/besett.git
+  path: ../../
+
+build:
+  script: python setup.py install
+  noarch: python
+  include_recipe: False
+
+requirements:
+  build:
+    - python >=3
+    - setuptools
+
+  run:
+    - python >=3
+
+test:
+  imports:
+    - besett
+
+  source_files:
+    - test_data/*
+    - test_besett.py
+
+  requires:
+    - nose
+
+  command:
+    - nosetests test_besett.py
+
+about:
+  home: https://github.com/mscelnik/besett
+  license: MIT
+  license_file: LICENSE

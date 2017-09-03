@@ -3,15 +3,17 @@
 
 from setuptools import setup
 
+version = '0.1.0'
+
 setup(
     name='besett',
-    version='0.1.0',
+    version=version,
     short_description='Simple settings file management for Python applications',
     description='Besett helps you manage settings across multiple JSON files.',
     url='https://github.com/mscelnik/besett',
     author='Matthew Celnik',
     author_email='besett@celnik.co.uk',
-    licence='LGPLv3+',
+    licence='MIT',
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
