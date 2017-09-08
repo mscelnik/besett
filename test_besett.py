@@ -124,9 +124,9 @@ class NestedDictTests(ut.TestCase):
             'multi.level': 'newmultilevel',
             'multi.multi.level': 'newmultimultilevel',
         })
-        self.assertEquals(self.ndict['flat'], 'newflat')
-        self.assertEquals(self.ndict['multi.level'], 'newmultilevel')
-        self.assertEquals(self.ndict['multi.multi.level'], 'newmultimultilevel')
+        self.assertEqual(self.ndict['flat'], 'newflat')
+        self.assertEqual(self.ndict['multi.level'], 'newmultilevel')
+        self.assertEqual(self.ndict['multi.multi.level'], 'newmultimultilevel')
 
     def test_values(self):
         """ NestedDict values works correctly.
@@ -348,3 +348,7 @@ class ChartManagerTests(ut.TestCase):
         self.assertListEqual(
             self.manager.get_default('colors'),
             ['red', 'green', 'blue'])
+
+
+if __name__ == '__main__':
+    ut.main()
