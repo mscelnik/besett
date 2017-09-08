@@ -19,9 +19,9 @@ object and provide it the path(s) to your settings file(s).
 Nested settings
 ---------------
 Nested settings are specified/accessed using dot separators (you can override
-this).  Besett stores settings nternally using a custom nested dictionary class,
-enabling you to select groups of settings.  In the json file you can still
-provide a nested dictionary directly, but the dot-notation enables you to
+this).  Besett stores settings internally using a custom nested dictionary
+class, enabling you to select groups of settings.  In the JSON file you can
+still provide a nested dictionary directly, but the dot-notation enables you to
 specify a "deep" nest entry quickly.
 """
 
